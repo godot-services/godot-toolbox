@@ -10,20 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "godot-toolbox",
-        "width": 440,
-        "height": 700,
-        "closable": false,
-        "fullscreen": false,
-        "minimizable": false,
-        "resizable": false,
-        "decorations": true,
-        "hiddenTitle": true,
-        "titleBarStyle": "Transparent"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
