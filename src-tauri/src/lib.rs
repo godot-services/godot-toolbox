@@ -3,9 +3,11 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Manager, Result, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
-use tauri_plugin_positioner::{Position, WindowExt};
 
 const WINDOW_ID: &'static str = "main";
+const WINDOW_WIDTH: f64 = 440.0;
+const WINDOW_HEIGHT: f64 = 700.0;
+const DEFAULT_SCREEN_MARGIN: f64 = 10.0;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -52,11 +54,9 @@ fn setup_tray(app: &App) -> Result<()> {
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match event.id.as_ref() {
         "open" => {
-            println!("TODO open menu item was clicked");
-            // TODO open app
+            toggle_window(app);
         }
         "quit" => {
-            println!("quit menu item was clicked");
             app.exit(0);
         }
         _ => {
@@ -72,53 +72,55 @@ fn on_tray_icon_event(icon: &TrayIcon, event: TrayIconEvent) {
             button_state: MouseButtonState::Up,
             ..
         } => {
-            on_tray_left_click(icon.app_handle());
+            toggle_window(icon.app_handle());
         }
-        // TrayIconEvent::Click { button: MouseButton::Right, button_state: MouseButtonState::Up, .. } => todo!(),
-        // TrayIconEvent::DoubleClick { .. } => todo!(),
-        // TrayIconEvent::Enter { .. } => todo!(),
-        // TrayIconEvent::Move { .. } => todo!(),
-        // TrayIconEvent::Leave { .. } => todo!(),
         _ => {}
     }
 }
 
-fn on_tray_left_click(app: &AppHandle) {
+fn toggle_window(app: &AppHandle) {
     println!("system tray received a left click");
 
     if let Some(window) = app.get_webview_window(WINDOW_ID) {
         if window.is_visible().is_ok_and(|is_visible| is_visible) {
             let _ = window.hide();
         } else {
-            // let _ = window.show();
-            let _ = window.set_focus();
+            let _ = window.show();
         }
     } else {
-        setup_window(app);
+        let _ = setup_window(app);
     }
-    // toggle_window_visibility(icon.app_handle());
 }
 
-fn setup_window(app: &AppHandle) {
+fn setup_window(app: &AppHandle) -> Result<()> {
     let win_builder = WebviewWindowBuilder::new(app, WINDOW_ID, WebviewUrl::default())
         .title("godot-toolbox")
-        .inner_size(440.0, 700.0)
+        .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .closable(false)
         .fullscreen(false)
         .minimizable(false)
         .maximizable(false)
         .decorations(false)
         .skip_taskbar(true)
+        .always_on_top(true)
         .focused(true);
+
+    let win_builder = if let Some(monitor) = app.primary_monitor().unwrap() {
+        let size = monitor.size();
+        let taskbar_height = get_taskbar_height(app)?;
+        let x = f64::from(size.width) - WINDOW_WIDTH - DEFAULT_SCREEN_MARGIN;
+        let y = f64::from(size.height) - taskbar_height - WINDOW_HEIGHT - DEFAULT_SCREEN_MARGIN;
+        win_builder.position(x, y)
+    } else {
+        win_builder
+    };
 
     // set transparent title bar only when building for macOS
     #[cfg(target_os = "macos")]
     let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
 
     let window = win_builder.build().unwrap();
-    
-    let _ = window.move_window(Position::BottomRight);
-    
+
     let window_handler = window.clone();
     window.on_window_event(move |event| match event {
         WindowEvent::Focused(focused) if !focused => {
@@ -145,13 +147,27 @@ fn setup_window(app: &AppHandle) {
             ns_window.setBackgroundColor_(bg_color);
         }
     }
+
+    Ok(())
 }
 
-fn toggle_window_visibility(app: &AppHandle) {
-    let window = app.get_webview_window("main").unwrap();
-    if !window.is_visible().unwrap() {
-        window.show().unwrap();
-    } else {
-        window.hide().unwrap();
-    }
+fn get_taskbar_height(app: &AppHandle) -> Result<f64> {
+    // FIXME window is briefly visible
+    let window = WebviewWindowBuilder::new(app, "taskbar-check", WebviewUrl::App("index.html".into()))
+        .maximized(true)
+        .transparent(true)
+        .decorations(false)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()?;
+    let window_height = f64::from(window.inner_size()?.height);
+    let monitor_height = get_primary_monitor_height(app)?;
+    window.close()?;
+    Ok(monitor_height - window_height)
+}
+
+fn get_primary_monitor_height(app: &AppHandle) -> Result<f64> {
+    let monitor = app.primary_monitor()?.unwrap();
+    let size = monitor.size();
+    Ok(f64::from(size.height))
 }
