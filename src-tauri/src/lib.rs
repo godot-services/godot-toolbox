@@ -17,6 +17,11 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let is_dev = true;
+    if is_dev {
+        dev_run();
+        return;
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_opener::init())
@@ -25,6 +30,50 @@ pub fn run() {
         })
         .setup(|app| {
             setup_tray(app)?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![greet]);
+
+    // keeps the app out of the dock on mac
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+    app.run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+fn dev_run() {
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_opener::init())
+        .on_tray_icon_event(|tray_handle, event| {
+            tauri_plugin_positioner::on_tray_event(tray_handle.app_handle(), &event);
+        })
+        .setup(|app| {
+            let b = WebviewWindowBuilder::new(app, WINDOW_ID, WebviewUrl::default())
+                .title("godot-toolbox")
+                .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+                .closable(false)
+                .fullscreen(false)
+                .minimizable(false)
+                .maximizable(false)
+                .decorations(false)
+                .skip_taskbar(true)
+                .always_on_top(true)
+                .focused(true);
+
+            let b = if let Some(monitor) = app.primary_monitor().unwrap() {
+                let size = monitor.size();
+                let taskbar_height = get_taskbar_height(app.app_handle())?;
+                let x = f64::from(size.width) - WINDOW_WIDTH - DEFAULT_SCREEN_MARGIN;
+                let y =
+                    f64::from(size.height) - taskbar_height - WINDOW_HEIGHT - DEFAULT_SCREEN_MARGIN;
+                b.position(x, y)
+            } else {
+                b
+            };
+
+            let _ = b.build();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![greet]);
