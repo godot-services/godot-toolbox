@@ -79,13 +79,12 @@ fn on_tray_icon_event(icon: &TrayIcon, event: TrayIconEvent) {
 }
 
 fn toggle_window(app: &AppHandle) {
-    println!("system tray received a left click");
-
     if let Some(window) = app.get_webview_window(WINDOW_ID) {
         if window.is_visible().is_ok_and(|is_visible| is_visible) {
             let _ = window.hide();
         } else {
             let _ = window.show();
+            let _ = window.set_focus();
         }
     } else {
         let _ = setup_window(app);
@@ -120,7 +119,9 @@ fn setup_window(app: &AppHandle) -> Result<()> {
     let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
 
     let window = win_builder.build().unwrap();
-
+    if !window.is_focused().is_ok_and(|is_focused| is_focused) {
+        let _ = window.set_focus();
+    }
     let window_handler = window.clone();
     window.on_window_event(move |event| match event {
         WindowEvent::Focused(focused) if !focused => {
@@ -153,13 +154,14 @@ fn setup_window(app: &AppHandle) -> Result<()> {
 
 fn get_taskbar_height(app: &AppHandle) -> Result<f64> {
     // FIXME window is briefly visible
-    let window = WebviewWindowBuilder::new(app, "taskbar-check", WebviewUrl::App("index.html".into()))
-        .maximized(true)
-        .transparent(true)
-        .decorations(false)
-        .skip_taskbar(true)
-        .visible(false)
-        .build()?;
+    let window =
+        WebviewWindowBuilder::new(app, "taskbar-check", WebviewUrl::App("index.html".into()))
+            .maximized(true)
+            .transparent(true)
+            .decorations(false)
+            .skip_taskbar(true)
+            .visible(false)
+            .build()?;
     let window_height = f64::from(window.inner_size()?.height);
     let monitor_height = get_primary_monitor_height(app)?;
     window.close()?;
